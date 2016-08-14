@@ -1,12 +1,11 @@
-
 (function (w) {
     function formInput(id) {
         this.Id = id;
-        this.Mutant = undefined,
-        this.Value = '';
+        this.Mutant = undefined, this.Value = '';
         this.Position = {};
         this.Marker = null;
         this.Lines = [];
+        this.Paths = {};
     };
     formInput.prototype.Me = function () {
         return document.getElementById(this.Id);
@@ -20,65 +19,71 @@
         kjsmap.SetPosition(this, this.Value);
     };
     w['kjsmap'] = {
-        map: null,
-        Circle: undefined,
-        mapOptions: {
-            minZoomLevel: 3,
-            center: { lat: 13.046034415549146, lng: 80.321044921875 }
-        },
-        SetPosition: function (s, v) {
+        map: null
+        , Circle: undefined
+        , mapOptions: {
+            minZoomLevel: 3
+            , center: {
+                lat: 13.046034415549146
+                , lng: 80.321044921875
+            }
+        }
+        , SetPosition: function (s, v) {
             var self = this;
             ajax.call({
-                url: 'https://maps.googleapis.com/maps/api/geocode/json?address=' + v,
-                isasync: true,
-                type: 'GET',
-                success: function (data) {
+                url: 'https://maps.googleapis.com/maps/api/geocode/json?address=' + v
+                , isasync: true
+                , type: 'GET'
+                , success: function (data) {
                     var output = JSON.parse(data);
                     if (output.status === google.maps.GeocoderStatus.OK) {
                         s.Position = output.results[0].geometry.location;
                         var address = self.Parser.Address(output.results[0].address_components);
                         s.Marker = new google.maps.Marker({
-                            position: new google.maps.LatLng(s.Position.lat, s.Position.lng),
-                            city_name: address.locality,
-                            country_code: address.country,
-                            optimized: false,
-                            id: output.results[0].place_id
+                            position: new google.maps.LatLng(s.Position.lat, s.Position.lng)
+                            , city_name: address.locality
+                            , country_code: address.country
+                            , optimized: false
+                            , id: output.results[0].place_id
                         });
                         s.Marker.setMap(self.map);
-                        _.defer(function () { self.Neighbour.Calculate(s.Position, s); });
+                        _.defer(function () {
+                            self.Neighbour.Calculate(s.Position, s);
+                        });
                     }
                 }
             });
-        },
-        Contains: function (c, p) {
+        }
+        , Contains: function (c, p) {
             return c.getBounds().contains(p);
-        },
-        Neighbour: {
+        }
+        , Neighbour: {
             Calculate: function (p, s) {
                 if (kjsmap.Fetch(this.Calculate, this, [p])) {
                     var radius = 100000;
                     var circle = new google.maps.Circle({
-                        strokeColor: '#000000',
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
-                        fillColor: '#F0FFFF',
-                        fillOpacity: 0.2,
-                        center: p,
-                        radius: radius
+                        strokeColor: '#000000'
+                        , strokeOpacity: 0.8
+                        , strokeWeight: 2
+                        , fillColor: '#F0FFFF'
+                        , fillOpacity: 0.2
+                        , center: p
+                        , radius: radius
                     });
                     circle.setMap(kjsmap.map);
                     var found = !1;
+
                     function findNeighbour() {
-                        kjsmap.Lines.forEach(function (v) {
+                        kjsmap.PathFinder.AllPaths.forEach(function (v) {
                             var iamneighbour = !1;
-                            v.getPath().getArray().forEach(function (gv) {
+                            v.line.getPath().getArray().forEach(function (gv) {
                                 if (kjsmap.Contains(circle, gv)) {
                                     iamneighbour = !0;
                                 }
                             });
                             if (iamneighbour) {
                                 found = !0;
-                                v.setVisible(!0);
+                                v.line.setVisible(!0);
                                 s.Lines.push(v);
                             }
                         });
@@ -92,30 +97,66 @@
                         }
                     }
                 }
-            },
-            Lines: function(f,t){
-                
             }
-        },
-        PathFinder: {
-            PathsAdded: !1,
-            AllPaths: [],
-            Find: function (f, t) {
+            , Lines: function (f, t) {}
+        }
+        , PathFinder: {
+            PathsAdded: !1
+            , AllPaths: []
+            , Find: function (f, t) {
                 var routes = {};
                 var self = this;
                 var fp = f.Lines;
-                var tp = t.Lines;                
-                f.Lines.forEach(function (cr) {                    
-                        if (self.PathsAdded) {
-                        self.AllPaths.forEach(function(p) { 
-                            var latlng = new google.maps.LatLng(p.end.lat,p.end.lng);
-                            p.line.setVisible(google.maps.geometry.poly.isLocationOnEdge(latlng,cr)); 
-                        });                        
-                    }                                       
+                var tp = t.Lines;
+                f.Paths = {};
+                var isNotComplete = !0;
+                self.AllPaths.forEach(function (p) {
+                    p.isVisited = !1;
                 });
+                var paths = self.AllPaths;
+                if (self.PathsAdded) {
+                    while (isNotComplete) {
+                        f.Lines.forEach(function (cr) {
+                            if (!cr.nextPath) {
+                                cr.nextPath = cr;
+                                cr.routes = [];
+                                f.Paths.ClosedPaths = [];
+                            }
+                            paths.forEach(function (p) {
+                                if (f.Paths.ClosedPaths.findIndex(function (cp) {
+                                        return cp.lineindex === p.lineindex;
+                                    }) === -1) {
+                                    var latlng = new google.maps.LatLng(p.end.lat, p.end.lng);
+                                    if (google.maps.geometry.poly.isLocationOnEdge(latlng, cr.nextPath.line) && p.lineindex !== cr.nextPath.lineindex && f.Lines.findIndex(function (cf) {
+                                            return cf.lineindex === p.lineindex;
+                                        }) === -1) {
+                                        p.line.setVisible(!0);
+                                        f.Paths.ClosedPaths.push(cr);
+                                        cr.routes.push(p);
+                                        cr.nextPath = p;
+                                        if (t.Lines.findIndex(function (cp) {
+                                                return cp.lineindex === p.lineindex;
+                                            }) !== -1) {
+                                            isNotComplete = !0;
+                                            return;
+                                        }
+                                    }
+                                }
+                                else {
+                                    cr.broken = !1;
+                                }
+                            });
+                        });
+                        if (f.Lines.length === f.Lines.filter(function (fl) {
+                                return fl.broken;
+                            })) {
+                            isNotComplete = !1;
+                        }
+                    }
+                }
             }
-        },
-        Parser: {
+        }
+        , Parser: {
             Address: function (add) {
                 var components = {};
                 add.forEach(function (v1, k) {
@@ -125,100 +166,119 @@
                 })
                 return components;
             }
-        },
-        Form: {
-            FromPort: new formInput('from'),
-            ToPort: new formInput('to'),
-            Search: function (s, e) {
+        }
+        , Form: {
+            FromPort: new formInput('from')
+            , ToPort: new formInput('to')
+            , Search: function (s, e) {
                 var start = this.FromPort.Marker.position;
                 var end = this.ToPort.Marker.position;
                 kjsmap.Direction.Service(!0, {
-                    origin: start,
-                    destination: end,
-                    travelMode: google.maps.DirectionsTravelMode.DRIVING,
-                    //transitOptions: { modes: [google.maps.TransitMode.ROAD] }
+                    origin: start
+                    , destination: end
+                    , travelMode: google.maps.DirectionsTravelMode.DRIVING, //transitOptions: { modes: [google.maps.TransitMode.ROAD] }
                 });
                 debugger;
-                if (this.FromPort.Lines.length > 0
-                    && this.ToPort.Lines.length > 0) {
+                if (this.FromPort.Lines.length > 0 && this.ToPort.Lines.length > 0) {
                     kjsmap.PathFinder.Find(this.FromPort, this.ToPort);
                 }
-            },
-            RangeChanged: function (s, e) {
+            }
+            , RangeChanged: function (s, e) {
                 kjsmap.Circle.setRadius(s.value * 1000);
             }
-        },
-        RouteData: null,
-        Lines: [],
-        Fetch: function (fn, scope, args) {
+        }
+        , RouteData: null
+        , Lines: []
+        , MapPathData: function (data, f) {
+            var toPostion = function (v) {
+                return {
+                    lat: v[1]
+                    , lng: v[0]
+                };
+            };
+            var lineindex = 1;
+            var alllines = [];
+            this.RouteData.features.forEach(function (v, i) {
+                var path = v.geometry.coordinates.map(function (vgc) {
+                    return toPostion(vgc);
+                });
+                alllines.push({
+                    isVisited: !1
+                    , start: path[0]
+                    , end: path[path.length - 1]
+                    , path: path
+                });
+            });
+            this.PathFinder.AllPaths = alllines.filter(function (al, index, lines) {
+                return lines.findIndex(function (alf) {
+                    return (alf.start.lat === al.start.lat && alf.end.lng === al.end.lng) || (alf.start.lat === al.end.lat && alf.end.lng === al.start.lng);
+                }) === index;
+            });
+            this.PathFinder.AllPaths.forEach(function (v, i) {
+                var line = new google.maps.Polyline({
+                    path: v.path
+                    , geodesic: true
+                    , strokeColor: '#000000'
+                    , strokeOpacity: 1.0
+                    , strokeWeight: 2
+                    , visible: f
+                });
+                v.line = line;
+                v.lineindex = 'line' + lineindex++;
+                line.setMap(kjsmap.map);
+            });
+            this.PathFinder.PathsAdded = !0;
+        }
+        , Fetch: function (fn, f, args) {
             if (this.RouteData === null) {
                 var self = this;
                 ajax.call({
-                    url: '/map',
-                    isasync: true,
-                    type: 'GET',
-                    success: function (data) {
+                    url: '/map'
+                    , isasync: true
+                    , type: 'GET'
+                    , success: function (data) {
                         self.RouteData = JSON.parse(data);
-                        if (fn) { fn.apply(scope || self, args); }
+                        self.MapPathData(self.RouteData, f);
                     }
                 });
             }
-            return this.RouteData !== null;
-        },
-        DrawRoute: function (s) {
+            return this.PathFinder.AllPaths.length > 0;
+        }
+        , DrawRoute: function (f) {
             var self = this;
-            var toPostion = function (v) {
-                return {
-                    lat: v[1],
-                    lng: v[0]
-                };
-            };
-            this.RouteData.features.forEach(function (v, i) {
-                var line = new google.maps.Polyline({
-                    path: v.geometry.coordinates.map(function (vgc) { return toPostion(vgc); }),
-                    geodesic: true,
-                    strokeColor: '#000000',
-                    strokeOpacity: 1.0,
-                    strokeWeight: 2,
-                    visible: s
-                });
-                if (self.PathFinder.PathsAdded) {
-                    var path = v.geometry.coordinates.map(function (vgc) { return toPostion(vgc); });                    
-                    self.PathFinder.AllPaths.push({
-                        isVisited: !1,
-                        start: path[0],
-                        end: path[path.length - 1],
-                        path: path,
-                        line:line
-                    });                    
-                }
-                line.setMap(kjsmap.map);
-                self.Lines.push(line);
-            });
-            self.PathFinder.PathsAdded = !0;
-        },
-        RoutesView: function (f) {
-            if (this.Fetch(this.RoutesView, this, [f])) {
-                this.DrawRoute(!0);
+            this.PathFinder.AllPaths.forEach(function (p) {
+                p.line.setVisible(f);
+            })
+        }
+        , RoutesView: function (f) {
+            if (this.Fetch(this.RoutesView, f, [f])) {
+                this.DrawRoute(f);
             }
-            this.Lines.forEach(function (l) { l.setVisible(f); });
-        },
-        Direction: {
-            RenderMan: undefined,
-            ServiceGuy: undefined,
-            Service: function (d, options, callback) {
-                if (!this.ServiceGuy) { this.ServiceGuy = new google.maps.DirectionsService(); }
+        }
+        , Direction: {
+            RenderMan: undefined
+            , ServiceGuy: undefined
+            , Service: function (d, options, callback) {
+                if (!this.ServiceGuy) {
+                    this.ServiceGuy = new google.maps.DirectionsService();
+                }
                 var self = this;
                 this.ServiceGuy.route(options, function (r) {
-                    if (d) { self.Display(!0, r); }
-                    else { callback.call(kjsmap, r); }
+                    if (d) {
+                        self.Display(!0, r);
+                    }
+                    else {
+                        callback.call(kjsmap, r);
+                    }
                 });
-            },
-            Display: function (n, r) {
+            }
+            , Display: function (n, r) {
                 var renderGuy = (!n && this.RenderMan) ? this.RenderMan : new google.maps.DirectionsRenderer();
                 renderGuy.setMap(kjsmap.map);
                 renderGuy.setDirections(r);
-                if (!n && !this.RenderMan) { this.RenderMan = renderGuy; }
+                if (!n && !this.RenderMan) {
+                    this.RenderMan = renderGuy;
+                }
             }
         }
     };
@@ -232,8 +292,8 @@
             }
         };
         return {
-            xhttp: getHttpreq(),
-            call: function (p) {
+            xhttp: getHttpreq()
+            , call: function (p) {
                 this.xhttp.onreadystatechange = function () {
                     if (this.readyState == 4 && this.status == 200) {
                         p.success(this.responseText);
@@ -241,31 +301,38 @@
                 };
                 this.xhttp.open(p.type, p.url, p.isasync);
                 this.xhttp.send();
-            },
-        };
+            }
+        , };
     }();
 })(window);
+
 function initMap() {
     var mapdiv = document.getElementById("map");
     if (mapdiv) {
         kjsmap.map = new google.maps.Map(mapdiv, {
-            zoom: 4,
-            minZoom: kjsmap.mapOptions.minZoomLevel,
-            center: { lat: 13.046034415549146, lng: 80.321044921875 }
+            zoom: 4
+            , minZoom: kjsmap.mapOptions.minZoomLevel
+            , center: {
+                lat: 13.046034415549146
+                , lng: 80.321044921875
+            }
         });
         var southWest = new google.maps.LatLng(-85, -180);
         var northEast = new google.maps.LatLng(85, 180);
         var allowedBounds = new google.maps.LatLngBounds(southWest, northEast);
         kjsmap.Circle = new google.maps.Circle({
-            strokeColor: '#000000',
-            strokeOpacity: 0.8,
-            strokeWeight: 2,
-            fillColor: '#F0FFFF',
-            fillOpacity: 0.2,
-            center: { lat: 13.089844954062787, lng: 80.29838562011719 },
-            radius: 500,
-            visible: !1,
-            map: kjsmap.map
+            strokeColor: '#000000'
+            , strokeOpacity: 0.8
+            , strokeWeight: 2
+            , fillColor: '#F0FFFF'
+            , fillOpacity: 0.2
+            , center: {
+                lat: 13.089844954062787
+                , lng: 80.29838562011719
+            }
+            , radius: 500
+            , visible: !1
+            , map: kjsmap.map
         });
         //kjsmap.Form.FromPort.Mutate();
         //kjsmap.Form.ToPort.Mutate();
@@ -274,8 +341,7 @@ function initMap() {
             console.log("Lng: " + e.latLng.lng());
         });
         google.maps.event.addListener(kjsmap.map, 'center_changed', function (e) {
-            if ((allowedBounds.getNorthEast().lat() > (kjsmap.map.getBounds().getNorthEast().lat()))
-                    && (allowedBounds.getSouthWest().lat() < (kjsmap.map.getBounds().getSouthWest().lat()))) {
+            if ((allowedBounds.getNorthEast().lat() > (kjsmap.map.getBounds().getNorthEast().lat())) && (allowedBounds.getSouthWest().lat() < (kjsmap.map.getBounds().getSouthWest().lat()))) {
                 lastValidCenter = kjsmap.map.getCenter();
                 return;
             }
@@ -283,4 +349,3 @@ function initMap() {
         });
     }
 };
-

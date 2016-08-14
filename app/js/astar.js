@@ -1,6 +1,7 @@
-    (function () {
-        window['State'] = function () {
+    (function (w) {
+        window['Path'] = function () {
             var instance = this;
+            this.index = from.lineindex + to.lineindex;
             this.path = path;
             this.FromPoint = from;
             this.ToPoint = to;
@@ -21,41 +22,47 @@
             var instance = this;
             this.OpenPaths = null;
             this.ClosedPaths = [];
+            this.EndIndexes = [];
             this.init = function (from, to) {
-                this.goalState = this.getGoalState(seqence);
                 this.OpenPaths = new BinaryHeap(function (state) {
                     return state.OverallDistance;
                 });
+                to.Lines.forEach(function (l) {
+                    this.EndIndexes.push(l.lineindex);
+                });
+            };
+            this.CheckPath = function (path) {
+                return this.EndIndexes.indexOf(path.lineindex) > -1;
             };
             this.Starter = function (from, to) {
-                var currentState = new State(null, null, from, to);
-                this.OpenPaths.push(currentState);
+                var currentPath = new Path(null, null, from, to);
+                this.OpenPaths.push(currentPath);
                 while (this.OpenPaths.size() > 0) {
                     var currentNode = this.OpenPaths.pop();
-                    this.ClosedPaths[currentNode.ranSeqString] = currentNode;
-                    if (currentNode.ranSeqString === this.goalState) {
-                        return currentNode;
+                    this.ClosedPaths[currentPath.index] = currentPath;
+                    if (this.CheckPath(currentPath)) {
+                        return currentPath;
                     }
-                    this.NextStateList = this.GetNextStateList(currentNode);
-                    for (var i = 0; i < this.NextStateList.length; i++) {
+                    this.NextPaths = this.GetNextPaths(currentPath);
+                    for (var i = 0; i < this.NextPaths.length; i++) {
                         var inOpenList = false;
                         var inClosedList = false;
-                        var nextstate = this.NextStateList[i];
-                        var IsOpenList = this.IsinOpen(nextstate);
+                        var nextPath = this.NextPaths[i];
+                        var IsOpenList = this.IsinOpen(nextPath);
                         if (IsOpenList.Present) {
                             inOpenList = true;
                             if (!IsOpenList.Costlier) {
-                                instance.OpenPaths.rescoreElement(nextstate);
+                                instance.OpenPaths.rescoreElement(nextPath);
                             }
                         }
                         else {
-                            inClosedList = this.ClosedPaths.hasOwnProperty(nextstate.ranSeqString);
+                            inClosedList = this.ClosedPaths.hasOwnProperty(nextPath.index);
                         }
                         if (!inClosedList && !inOpenList) {
-                            this.OpenPaths.push(nextstate);
+                            this.OpenPaths.push(nextPath);
                         }
                     }
                 }
             }
         }
-    })(w);
+    })(window);
