@@ -69,9 +69,11 @@
                         , fillOpacity: 0.2
                         , center: p
                         , radius: radius
-                    });
+                        , visible: !0
+                    , });
                     circle.setMap(kjsmap.map);
                     var found = !1;
+                    s.Lines = [];
 
                     function findNeighbour() {
                         kjsmap.PathFinder.AllPaths.forEach(function (v) {
@@ -104,6 +106,30 @@
             PathsAdded: !1
             , AllPaths: []
             , Find: function (f, t) {
+                var self = this;
+                var fp = f.Lines;
+                var tp = t.Lines;
+                var finder = new aStar();
+                var path = finder.init(f, t, self.AllPaths);
+                if (path && path != null) {
+                    var isComplete = path.parent !== null;
+                    var cr = path;
+                    while (isComplete) {
+                        cr.Line.line.setVisible(!0);
+                        isComplete = cr.parent !== null;
+                        cr = cr.parent;
+                    }
+                }
+                /*f.Lines.forEach(function (fl) {
+                    self.AllPaths.forEach(function (p) {
+                        var latlng = new google.maps.LatLng(fl.end.lat, fl.end.lng);
+                        if (google.maps.geometry.poly.isLocationOnEdge(latlng, p.line)) {
+                            p.line.setVisible(!0);
+                        }
+                    });
+                });*/
+            }
+            , FindAll: function (f, t) {
                 var routes = {};
                 var self = this;
                 var fp = f.Lines;
@@ -115,25 +141,26 @@
                 });
                 var paths = self.AllPaths;
                 if (self.PathsAdded) {
-                    while (isNotComplete) {
-                        f.Lines.forEach(function (cr) {
-                            if (!cr.nextPath) {
-                                cr.nextPath = cr;
-                                cr.routes = [];
-                                f.Paths.ClosedPaths = [];
-                            }
+                    f.Lines.forEach(function (cr) {
+                        var currentPath = cr;
+                        if (!cr.routes) {
+                            cr.routes = [];
+                        }
+                        var isNotComplete = !0;
+                        var closedPaths = []
+                        while (isNotComplete) {
                             paths.forEach(function (p) {
-                                if (f.Paths.ClosedPaths.findIndex(function (cp) {
+                                if (closedPaths.findIndex(function (cp) {
+                                        return cp.lineindex === p.lineindex;
+                                    }) === -1 && f.Lines.findIndex(function (cp) {
                                         return cp.lineindex === p.lineindex;
                                     }) === -1) {
-                                    var latlng = new google.maps.LatLng(p.end.lat, p.end.lng);
-                                    if (google.maps.geometry.poly.isLocationOnEdge(latlng, cr.nextPath.line) && p.lineindex !== cr.nextPath.lineindex && f.Lines.findIndex(function (cf) {
-                                            return cf.lineindex === p.lineindex;
-                                        }) === -1) {
+                                    var latlng = new google.maps.LatLng(currentPath.end.lat, currentPath.end.lng);
+                                    if (google.maps.geometry.poly.isLocationOnEdge(latlng, p.line)) {
                                         p.line.setVisible(!0);
-                                        f.Paths.ClosedPaths.push(cr);
+                                        closedPaths.push(p);
                                         cr.routes.push(p);
-                                        cr.nextPath = p;
+                                        currentPath = p;
                                         if (t.Lines.findIndex(function (cp) {
                                                 return cp.lineindex === p.lineindex;
                                             }) !== -1) {
@@ -146,13 +173,13 @@
                                     cr.broken = !1;
                                 }
                             });
-                        });
-                        if (f.Lines.length === f.Lines.filter(function (fl) {
-                                return fl.broken;
-                            })) {
-                            isNotComplete = !1;
+                            if (f.Lines.length === f.Lines.filter(function (fl) {
+                                    return fl.broken;
+                                })) {
+                                isNotComplete = !1;
+                            }
                         }
-                    }
+                    });
                 }
             }
         }
@@ -173,12 +200,11 @@
             , Search: function (s, e) {
                 var start = this.FromPort.Marker.position;
                 var end = this.ToPort.Marker.position;
-                kjsmap.Direction.Service(!0, {
+                /*kjsmap.Direction.Service(!0, {
                     origin: start
                     , destination: end
                     , travelMode: google.maps.DirectionsTravelMode.DRIVING, //transitOptions: { modes: [google.maps.TransitMode.ROAD] }
-                });
-                debugger;
+                });*/
                 if (this.FromPort.Lines.length > 0 && this.ToPort.Lines.length > 0) {
                     kjsmap.PathFinder.Find(this.FromPort, this.ToPort);
                 }
@@ -225,6 +251,12 @@
                 });
                 v.line = line;
                 v.lineindex = 'line' + lineindex++;
+                google.maps.event.addListener(line, 'click', function () {
+                    line.setOptions({
+                        strokeColor: 'red'
+                    });
+                    console.log(v.lineindex);
+                });
                 line.setMap(kjsmap.map);
             });
             this.PathFinder.PathsAdded = !0;
@@ -336,10 +368,10 @@ function initMap() {
         });
         //kjsmap.Form.FromPort.Mutate();
         //kjsmap.Form.ToPort.Mutate();
-        google.maps.event.addListener(kjsmap.map, "click", function (e) {
+        /*google.maps.event.addListener(kjsmap.map, "click", function (e) {
             console.log("Lat: " + e.latLng.lat());
             console.log("Lng: " + e.latLng.lng());
-        });
+        });*/
         google.maps.event.addListener(kjsmap.map, 'center_changed', function (e) {
             if ((allowedBounds.getNorthEast().lat() > (kjsmap.map.getBounds().getNorthEast().lat())) && (allowedBounds.getSouthWest().lat() < (kjsmap.map.getBounds().getSouthWest().lat()))) {
                 lastValidCenter = kjsmap.map.getCenter();
