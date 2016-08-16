@@ -1,5 +1,5 @@
     (function (w) {
-        window['Path'] = function (line, previous) {
+        window['Path'] = function (line, previous, to, from) {
             var instance = this;
             this.pathindex = line.lineindex;
             this.PathString = '';
@@ -8,7 +8,21 @@
             this.parent = previous;
             this.GetDistance = function () {
                 var distance = 0;
-                return google.maps.geometry.spherical.computeLength(line.line.getPath().getArray());;
+                var openEnd = null;
+                var penalty = 0;
+                var endlatlng = new google.maps.LatLng(this.Line.end.lat, this.Line.end.lng);
+                var startlatlng = new google.maps.LatLng(this.Line.start.lat, this.Line.start.lng);
+                if (this.parent != null) {
+                    openEnd = google.maps.geometry.poly.isLocationOnEdge(startlatlng, this.parent.Line.line) ? startlatlng : endlatlng;
+                    penalty = google.maps.geometry.spherical.computeDistanceBetween(new google.maps.LatLng(to.lat, to.lng), openEnd);
+                }
+                else {
+                    var fromlatlng = new google.maps.LatLng(from.lat, from.lng);
+                    var startDistance = google.maps.geometry.spherical.computeDistanceBetween(fromlatlng, startlatlng);
+                    var endDistance = google.maps.geometry.spherical.computeDistanceBetween(fromlatlng, endlatlng);
+                    penalty = startDistance > endDistance ? startDistance : endDistance;
+                }
+                return google.maps.geometry.spherical.computeLength(line.line.getPath().getArray()) + penalty;
             }
             if (this.parent == null) {
                 this.OverallDistance = 0;
@@ -27,20 +41,25 @@
             this.StartIndexes = [];
             this.EndIndexes = [];
             this.AllPaths = [];
+            this.To = null;
+            this.From = null;
             this.init = function (from, to, allpaths) {
+                debugger;
                 this.OpenPaths = new BinaryHeap(function (state) {
                     return state.OverallDistance;
                 });
                 from.Lines.forEach(l => instance.StartIndexes.push(l.lineindex));
                 to.Lines.forEach(l => instance.EndIndexes.push(l.lineindex));
                 this.AllPaths = allpaths;
+                this.To = to;
+                this.From = from;
                 return this.Starter(from, to);
             };
             this.CheckPath = function (path) {
                 return this.EndIndexes.indexOf(path.pathindex) > -1;
             };
             this.Starter = function (from, to) {
-                from.Lines.forEach(v => instance.OpenPaths.push(new Path(v, null)));
+                from.Lines.forEach(v => instance.OpenPaths.push(new Path(v, null, this.To.Position, this.From.Position)));
                 while (this.OpenPaths.size() > 0) {
                     var currentPath = this.OpenPaths.pop();
                     this.ClosedPaths[currentPath.PathString] = currentPath;
@@ -75,7 +94,7 @@
                     var endlatlng = new google.maps.LatLng(path.Line.end.lat, path.Line.end.lng);
                     var startlatlng = new google.maps.LatLng(path.Line.start.lat, path.Line.start.lng);
                     if ((google.maps.geometry.poly.isLocationOnEdge(startlatlng, p.line) || google.maps.geometry.poly.isLocationOnEdge(endlatlng, p.line)) && p.lineindex != path.pathindex && path.PathString.indexOf(p.lineindex) === -1 && self.StartIndexes.indexOf(p.lineindex) === -1) {
-                        nextPaths.push(new Path(p, path));
+                        nextPaths.push(new Path(p, path, self.To.Position, self.From.Position));
                     }
                 });
                 return nextPaths;
